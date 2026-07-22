@@ -157,7 +157,7 @@ if 'dati' not in st.session_state:
     try:
         st.session_state.dati = carica_dati()
     except Exception as e:
-        st.error("In attesa delle credenziali di Google...")
+        st.error(f"Il vero errore è: {e}")
         st.stop()
         
 if 'form_reset_key' not in st.session_state:
