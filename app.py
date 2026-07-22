@@ -154,11 +154,7 @@ def salva_dati(df):
 
 # --- INTERFACCIA UTENTE ---
 if 'dati' not in st.session_state:
-    try:
-        st.session_state.dati = carica_dati()
-    except Exception as e:
-        st.error(f"Il vero errore è: {e}")
-        st.stop()
+    st.session_state.dati = carica_dati()
         
 if 'form_reset_key' not in st.session_state:
     st.session_state.form_reset_key = 0
