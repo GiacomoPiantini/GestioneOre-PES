@@ -18,7 +18,7 @@ st.markdown("""
 
 NOME_FOGLIO_GOOGLE = "Registro_ore_PES"
 
-LISTA_JOB = ["421088", "804976", "8847761", "8847703", "8847704", "8847777", "8847801", "1655566", "8847683"]
+LISTA_JOB = ["421088", "0804976", "8847761", "8847703", "8847704", "8847777", "8847801", "1655566", "8847683"]
 LISTA_DESCRIZIONI = [
     "Active participation in ITO/OTR Hand Off meetings (General Scope of supply) and CLDR issue",
     "ECR Management, BoM creation", "Check and comments on bom draft structures",
