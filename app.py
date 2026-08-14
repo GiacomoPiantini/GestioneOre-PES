@@ -11,7 +11,6 @@ st.markdown("""
     header {visibility: hidden;}
     footer {visibility: hidden;}
     .block-container { padding: 1rem 3rem !important; }
-    div[data-testid="stForm"] { padding: 1rem 1.5rem !important; }
     .st-emotion-cache-16idsys p { margin-bottom: 0px; }
 </style>
 """, unsafe_allow_html=True)
@@ -155,6 +154,7 @@ jobs_recenti = list(dict.fromkeys(
     str(x).strip() for x in reversed(st.session_state.dati["JOB"].dropna().tolist()) 
     if str(x).strip() != ""
 ))
+opzioni_disponibili = jobs_recenti + [OPZIONE_NUOVO_JOB] if jobs_recenti else [OPZIONE_NUOVO_JOB]
 
 col_data, col_ore = st.columns([1, 1])
 with col_data:
@@ -162,39 +162,36 @@ with col_data:
 with col_ore:
     st.markdown(f"<div style='text-align: right; margin-top: 10px; font-size: 18px;'><b>Ore registrate oggi: {int(ore_gia_inserite)} / 8</b></div>", unsafe_allow_html=True)
 
-# --- SELEZIONE JOB (fuori dal form per permettere la reattività immediata) ---
-opzioni_disponibili = jobs_recenti + [OPZIONE_NUOVO_JOB] if jobs_recenti else [OPZIONE_NUOVO_JOB]
-
-col_j1, col_j2 = st.columns(2)
-with col_j1:
-    job_selezionato = st.selectbox(
-        "JOB", 
-        opzioni_disponibili, 
-        index=None, 
-        placeholder="Seleziona dai recenti o inserisci nuovo...",
-        key=f"select_job_{st.session_state.form_reset_key}"
-    )
-    if job_selezionato == OPZIONE_NUOVO_JOB:
-        job_finale = st.text_input("Inserisci codice JOB personalizzato", key=f"text_job_{st.session_state.form_reset_key}").strip()
-    else:
-        job_finale = job_selezionato if job_selezionato else ""
-
-# --- FORM INSERIMENTO DETTAGLI ---
-with st.form(f"form_inserimento_{st.session_state.form_reset_key}", clear_on_submit=False):
+# --- CARD UNICA PER L'INSERIMENTO ---
+with st.container(border=True):
     col1, col2 = st.columns(2)
+    
     with col1:
-        alt_job = st.text_input("Alternative Job (Opzionale)")
-        product = st.selectbox("PRODUCT (Opzionale)", LISTA_PRODUCT, index=None)
-        comp = st.selectbox("Comp (Opzionale)", LISTA_COMP, index=None)
+        job_selezionato = st.selectbox(
+            "JOB", 
+            opzioni_disponibili, 
+            index=None, 
+            placeholder="Seleziona dai recenti o inserisci nuovo...",
+            key=f"select_job_{st.session_state.form_reset_key}"
+        )
+        if job_selezionato == OPZIONE_NUOVO_JOB:
+            job_finale = st.text_input("Inserisci codice JOB personalizzato", key=f"text_job_{st.session_state.form_reset_key}").strip()
+        else:
+            job_finale = job_selezionato if job_selezionato else ""
+
+        alt_job = st.text_input("Alternative Job (Opzionale)", key=f"alt_job_{st.session_state.form_reset_key}")
+        product = st.selectbox("PRODUCT (Opzionale)", LISTA_PRODUCT, index=None, key=f"product_{st.session_state.form_reset_key}")
+        comp = st.selectbox("Comp (Opzionale)", LISTA_COMP, index=None, key=f"comp_{st.session_state.form_reset_key}")
+        
     with col2:
-        descrizione = st.selectbox("Description", LISTA_DESCRIZIONI, index=None)
-        dettaglio = st.text_input("Detail (Opzionale)")
+        descrizione = st.selectbox("Description", LISTA_DESCRIZIONI, index=None, key=f"desc_{st.session_state.form_reset_key}")
+        dettaglio = st.text_input("Detail (Opzionale)", key=f"detail_{st.session_state.form_reset_key}")
         opzioni_ore = list(range(1, int(ore_rimaste) + 1)) if ore_rimaste > 0 else []
-        hrs = st.selectbox("HRS", opzioni_ore, index=None)
+        hrs = st.selectbox("HRS", opzioni_ore, index=None, key=f"hrs_{st.session_state.form_reset_key}")
 
     col_vuota, col_bottone = st.columns([5, 1])
     with col_bottone:
-        submit = st.form_submit_button("INSERISCI RIGA", use_container_width=True)
+        submit = st.button("INSERISCI RIGA", use_container_width=True, key=f"btn_submit_{st.session_state.form_reset_key}")
 
     if submit:
         campi_mancanti = [c for c, v in zip(["Description", "HRS"], [descrizione, hrs]) if v is None]
@@ -213,6 +210,7 @@ with st.form(f"form_inserimento_{st.session_state.form_reset_key}", clear_on_sub
             st.session_state.form_reset_key += 1
             st.rerun()
 
+# --- TABELLA DI MODIFICA ORE ODIERNE ---
 df_passato = st.session_state.dati[st.session_state.dati["Data"] != oggi_str].reset_index(drop=True)
 df_oggi_edit = st.session_state.dati[st.session_state.dati["Data"] == oggi_str].reset_index(drop=True)
 
