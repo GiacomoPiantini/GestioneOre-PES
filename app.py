@@ -91,6 +91,9 @@ def salva_dati(df):
     worksheet_1.clear()
     worksheet_1.update([df_to_save.columns.values.tolist()] + df_to_save.values.tolist())
 
+    # Formattazione colonna C (JOB in Foglio1) come TESTO NORMALE
+    worksheet_1.format("C:C", {"numberFormat": {"type": "TEXT"}})
+
     # --- 2. CALCOLO E RICOSTRUZIONE DA ZERO DEL REPORT ---
     df_rep = df_base.copy()
     colonne_raggruppamento = ["Mese_Anno", "JOB", "Alternative Job", "Requestor", "PRODUCT", "Comp", "Description", "DOC", "REV"]
@@ -132,7 +135,7 @@ def salva_dati(df):
     # Scrittura dei dati ricalcolati
     worksheet_rep.update([df_report.columns.values.tolist()] + df_report.values.tolist())
 
-    # Formattazione esplicita della colonna B (JOB nel Report) come TESTO NORMALE
+    # Formattazione colonna B (JOB nel Report) come TESTO NORMALE
     worksheet_rep.format("B:B", {"numberFormat": {"type": "TEXT"}})
 
 # --- INTERFACCIA UTENTE ---
@@ -159,24 +162,27 @@ with col_data:
 with col_ore:
     st.markdown(f"<div style='text-align: right; margin-top: 10px; font-size: 18px;'><b>Ore registrate oggi: {int(ore_gia_inserite)} / 8</b></div>", unsafe_allow_html=True)
 
+# --- SELEZIONE JOB (fuori dal form per permettere la reattività immediata) ---
+opzioni_disponibili = jobs_recenti + [OPZIONE_NUOVO_JOB] if jobs_recenti else [OPZIONE_NUOVO_JOB]
+
+col_j1, col_j2 = st.columns(2)
+with col_j1:
+    job_selezionato = st.selectbox(
+        "JOB", 
+        opzioni_disponibili, 
+        index=None, 
+        placeholder="Seleziona dai recenti o inserisci nuovo...",
+        key=f"select_job_{st.session_state.form_reset_key}"
+    )
+    if job_selezionato == OPZIONE_NUOVO_JOB:
+        job_finale = st.text_input("Inserisci codice JOB personalizzato", key=f"text_job_{st.session_state.form_reset_key}").strip()
+    else:
+        job_finale = job_selezionato if job_selezionato else ""
+
+# --- FORM INSERIMENTO DETTAGLI ---
 with st.form(f"form_inserimento_{st.session_state.form_reset_key}", clear_on_submit=False):
     col1, col2 = st.columns(2)
     with col1:
-        # Opzioni unificate: lista dei JOB recenti + voce per nuovo inserimento
-        opzioni_disponibili = jobs_recenti + [OPZIONE_NUOVO_JOB] if jobs_recenti else [OPZIONE_NUOVO_JOB]
-        
-        job_selezionato = st.selectbox(
-            "JOB", 
-            opzioni_disponibili, 
-            index=None, 
-            placeholder="Seleziona dai recenti o inserisci nuovo..."
-        )
-        
-        if job_selezionato == OPZIONE_NUOVO_JOB:
-            job = st.text_input("Inserisci codice JOB personalizzato").strip()
-        else:
-            job = job_selezionato if job_selezionato else ""
-
         alt_job = st.text_input("Alternative Job (Opzionale)")
         product = st.selectbox("PRODUCT (Opzionale)", LISTA_PRODUCT, index=None)
         comp = st.selectbox("Comp (Opzionale)", LISTA_COMP, index=None)
@@ -197,7 +203,7 @@ with st.form(f"form_inserimento_{st.session_state.form_reset_key}", clear_on_sub
         else:
             nuova_riga = pd.DataFrame([{
                 "Seleziona": False, "Data": oggi_str, "Mese_Anno": get_mese_anno(oggi_str),
-                "JOB": job, "Alternative Job": alt_job, "Requestor": "", 
+                "JOB": job_finale, "Alternative Job": alt_job, "Requestor": "", 
                 "PRODUCT": product if product else "", "Comp": comp if comp else "",
                 "Description": descrizione, "Detail": dettaglio, "DOC": "", "REV": "", "HRS": hrs
             }])
