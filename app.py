@@ -72,6 +72,7 @@ def carica_dati():
         df = df[COLONNE_DF]
         
     df['Data'] = df['Data'].astype(str)
+    df['JOB'] = df['JOB'].astype(str)
     df.insert(0, "Seleziona", False)
     return df
 
@@ -88,12 +89,18 @@ def salva_dati(df):
     df_to_save = df_base.astype(str)
         
     worksheet_1.clear()
-    worksheet_1.update([df_to_save.columns.values.tolist()] + df_to_save.values.tolist())
+    worksheet_1.update(
+        [df_to_save.columns.values.tolist()] + df_to_save.values.tolist(),
+        value_input_option="USER_ENTERED"
+    )
 
-    # Formattazione colonna C (JOB in Foglio1) come TESTO NORMALE
-    worksheet_1.format("C:C", {"numberFormat": {"type": "TEXT"}})
+    # Formattazione colonna C (JOB in Foglio1)
+    try:
+        worksheet_1.format("C:C", {"numberFormat": {"type": "TEXT"}})
+    except Exception:
+        pass
 
-    # --- 2. CALCOLO E RICOSTRUZIONE DA ZERO DEL REPORT ---
+    # --- 2. CALCOLO E AGGIORNAMENTO REPORT ---
     df_rep = df_base.copy()
     colonne_raggruppamento = ["Mese_Anno", "JOB", "Alternative Job", "Requestor", "PRODUCT", "Comp", "Description", "DOC", "REV"]
     
@@ -119,23 +126,23 @@ def salva_dati(df):
     colonne_report = [col for col in COLONNE_DF if col != "Data"]
     df_report = df_report[colonne_report].astype(str)
         
-    # Eliminazione del vecchio foglio "Report" se esiste
+    # Recupera o crea il foglio Report
     try:
-        ws_report_old = sheet.worksheet("Report")
-        sheet.del_worksheet(ws_report_old)
+        worksheet_rep = sheet.worksheet("Report")
     except gspread.exceptions.WorksheetNotFound:
-        pass
+        worksheet_rep = sheet.add_worksheet(title="Report", rows="1000", cols="20")
         
-    # Ricreazione del foglio "Report" totalmente nuovo
-    righe_totali = max(len(df_report) + 10, 100)
-    colonne_totali = max(len(df_report.columns), 20)
-    worksheet_rep = sheet.add_worksheet(title="Report", rows=str(righe_totali), cols=str(colonne_totali))
-    
-    # Scrittura dei dati ricalcolati
-    worksheet_rep.update([df_report.columns.values.tolist()] + df_report.values.tolist())
+    worksheet_rep.clear()
+    worksheet_rep.update(
+        [df_report.columns.values.tolist()] + df_report.values.tolist(),
+        value_input_option="USER_ENTERED"
+    )
 
-    # Formattazione colonna B (JOB nel Report) come TESTO NORMALE
-    worksheet_rep.format("B:B", {"numberFormat": {"type": "TEXT"}})
+    # Formattazione colonna B (JOB nel Report)
+    try:
+        worksheet_rep.format("B:B", {"numberFormat": {"type": "TEXT"}})
+    except Exception:
+        pass
 
 # --- INTERFACCIA UTENTE ---
 if 'dati' not in st.session_state:
@@ -200,7 +207,7 @@ with st.container(border=True):
         else:
             nuova_riga = pd.DataFrame([{
                 "Seleziona": False, "Data": oggi_str, "Mese_Anno": get_mese_anno(oggi_str),
-                "JOB": job_finale, "Alternative Job": alt_job, "Requestor": "", 
+                "JOB": str(job_finale), "Alternative Job": alt_job, "Requestor": "", 
                 "PRODUCT": product if product else "", "Comp": comp if comp else "",
                 "Description": descrizione, "Detail": dettaglio, "DOC": "", "REV": "", "HRS": hrs
             }])
