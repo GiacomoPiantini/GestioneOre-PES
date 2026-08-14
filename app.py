@@ -35,9 +35,7 @@ LISTA_DESCRIZIONI = [
     "IDM", "Service Request & Triage", "PCB support (data gathering, expediting, data upload in Clarity)",
     "Remaining Rebranding activities", "Management of Recurrent Issue on Other NON-GEV", "Formazione"
 ]
-#LISTA_PRODUCT = ["LTGT", "AERO GT", "HDGT"]
 LISTA_PRODUCT = ["HDGT"]
-#LISTA_COMP = ["Sei M.", "Vannelli M.", "Giacco A.", "Tortorelli S.", "Tomberli L.", "Pecchioli M.", "Ercoles E.", "Costagliola S.", "Ermini R.", "Comparini A. C."]
 LISTA_COMP = ["Costagliola S.", "Ermini R."]
 COLONNE_DF = ["Data", "Mese_Anno", "JOB", "Alternative Job", "Requestor", "PRODUCT", "Comp", "Description", "Detail", "DOC", "REV", "HRS"]
 
@@ -64,7 +62,7 @@ def carica_dati():
     sheet = client.open(NOME_FOGLIO_GOOGLE)
     worksheet = sheet.get_worksheet(0)
     
-    # Evita che le colonne numeriche (come JOB) perdano gli zeri iniziali in lettura
+    # numericise_ignore=['all'] forza la lettura di tutti i valori come stringhe trasparenti
     try:
         dati = worksheet.get_all_records(head=1, numericise_ignore=['all'])
     except Exception:
@@ -80,7 +78,7 @@ def carica_dati():
         df = df[COLONNE_DF]
         
     df['Data'] = df['Data'].astype(str)
-    df['JOB'] = df['JOB'].astype(str)
+    df['JOB'] = df['JOB'].astype(str).str.strip()
     df.insert(0, "Seleziona", False)
     return df
 
@@ -94,22 +92,23 @@ def salva_dati(df):
         worksheet_1.update_title("Foglio1")
         
     df_base = df.drop(columns=["Seleziona"], errors='ignore').fillna("")
-    df_to_save = df_base.astype(str)
+    
+    # Prepariamo la struttura preservando i tipi (JOB come stringa, HRS come numero)
+    df_to_save = df_base.copy()
+    for col in df_to_save.columns:
+        if col == "HRS":
+            df_to_save[col] = pd.to_numeric(df_to_save[col], errors='coerce').fillna(0)
+        else:
+            df_to_save[col] = df_to_save[col].astype(str)
         
     worksheet_1.clear()
-    
-    # Formattazione preventiva Colonna C (JOB) come Testo Normale
-    try:
-        worksheet_1.format("C:C", {"numberFormat": {"type": "TEXT"}})
-    except Exception:
-        pass
 
+    # value_input_option="RAW" impedisce la conversione automatica di "0421088" in numero
     worksheet_1.update(
         [df_to_save.columns.values.tolist()] + df_to_save.values.tolist(),
-        value_input_option="USER_ENTERED"
+        value_input_option="RAW"
     )
 
-    # Re-applicazione della formattazione a testo per sicurezza dopo l'update
     try:
         worksheet_1.format("C:C", {"numberFormat": {"type": "TEXT"}})
     except Exception:
@@ -139,25 +138,22 @@ def salva_dati(df):
     })
     
     colonne_report = [col for col in COLONNE_DF if col != "Data"]
-    df_report = df_report[colonne_report].astype(str)
+    df_report = df_report[colonne_report]
+    
+    for col in df_report.columns:
+        if col != "HRS":
+            df_report[col] = df_report[col].astype(str)
         
-    # Recupero o creazione del foglio Report
     try:
         worksheet_rep = sheet.worksheet("Report")
     except gspread.exceptions.WorksheetNotFound:
         worksheet_rep = sheet.add_worksheet(title="Report", rows="1000", cols="20")
         
     worksheet_rep.clear()
-    
-    # Formattazione Colonna B (JOB) nel Report come Testo Normale
-    try:
-        worksheet_rep.format("B:B", {"numberFormat": {"type": "TEXT"}})
-    except Exception:
-        pass
 
     worksheet_rep.update(
         [df_report.columns.values.tolist()] + df_report.values.tolist(),
-        value_input_option="USER_ENTERED"
+        value_input_option="RAW"
     )
 
     try:
