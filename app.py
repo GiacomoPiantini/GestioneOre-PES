@@ -80,7 +80,7 @@ def salva_dati(df):
     client = connetti_gsheets()
     sheet = client.open(NOME_FOGLIO_GOOGLE)
     
-    # Prepara Foglio 1
+    # --- 1. SALVATAGGIO FOGLIO 1 ---
     worksheet_1 = sheet.get_worksheet(0)
     if worksheet_1.title != "Foglio1":
         worksheet_1.update_title("Foglio1")
@@ -91,7 +91,7 @@ def salva_dati(df):
     worksheet_1.clear()
     worksheet_1.update([df_to_save.columns.values.tolist()] + df_to_save.values.tolist())
 
-    # Prepara Report
+    # --- 2. CALCOLO E RICOSTRUZIONE DA ZERO DEL REPORT ---
     df_rep = df_base.copy()
     colonne_raggruppamento = ["Mese_Anno", "JOB", "Alternative Job", "Requestor", "PRODUCT", "Comp", "Description", "DOC", "REV"]
     
@@ -117,14 +117,23 @@ def salva_dati(df):
     colonne_report = [col for col in COLONNE_DF if col != "Data"]
     df_report = df_report[colonne_report].astype(str)
         
-    # Crea o aggiorna il foglio Report
+    # Eliminazione del vecchio foglio "Report" se esiste
     try:
-        worksheet_rep = sheet.worksheet("Report")
+        ws_report_old = sheet.worksheet("Report")
+        sheet.del_worksheet(ws_report_old)
     except gspread.exceptions.WorksheetNotFound:
-        worksheet_rep = sheet.add_worksheet(title="Report", rows="1000", cols="20")
+        pass
         
-    worksheet_rep.clear()
+    # Ricreazione del foglio "Report" totalmente nuovo
+    righe_totali = max(len(df_report) + 10, 100)
+    colonne_totali = max(len(df_report.columns), 20)
+    worksheet_rep = sheet.add_worksheet(title="Report", rows=str(righe_totali), cols=str(colonne_totali))
+    
+    # Scrittura dei dati ricalcolati
     worksheet_rep.update([df_report.columns.values.tolist()] + df_report.values.tolist())
+
+    # Formattazione esplicita della colonna B (JOB nel Report) come TESTO NORMALE
+    worksheet_rep.format("B:B", {"numberFormat": {"type": "TEXT"}})
 
 # --- INTERFACCIA UTENTE ---
 if 'dati' not in st.session_state:
@@ -163,7 +172,6 @@ with st.form(f"form_inserimento_{st.session_state.form_reset_key}", clear_on_sub
             placeholder="Seleziona dai recenti o inserisci nuovo..."
         )
         
-        # Gestione input: se seleziona l'opzione speciale mostra il campo di testo
         if job_selezionato == OPZIONE_NUOVO_JOB:
             job = st.text_input("Inserisci codice JOB personalizzato").strip()
         else:
