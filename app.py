@@ -17,6 +17,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 NOME_FOGLIO_GOOGLE = "Registro_ore_PES"
+OPZIONE_NUOVO_JOB = "➕ Scrivi un nuovo JOB..."
 
 LISTA_DESCRIZIONI = [
     "Active participation in ITO/OTR Hand Off meetings (General Scope of supply) and CLDR issue",
@@ -163,7 +164,7 @@ df_oggi = st.session_state.dati[st.session_state.dati["Data"] == oggi_str]
 ore_gia_inserite = pd.to_numeric(df_oggi["HRS"], errors='coerce').fillna(0).sum()
 ore_rimaste = 8 - ore_gia_inserite
 
-# Estrazione dinamica degli ultimi JOB unici inseriti nel foglio (dal più recente al meno recente)
+# Estrazione dinamica degli ultimi JOB unici dal foglio
 jobs_recenti = list(dict.fromkeys(
     str(x).strip() for x in reversed(st.session_state.dati["JOB"].dropna().tolist()) 
     if str(x).strip() != ""
@@ -178,12 +179,21 @@ with col_ore:
 with st.form(f"form_inserimento_{st.session_state.form_reset_key}", clear_on_submit=False):
     col1, col2 = st.columns(2)
     with col1:
-        # Suggerimenti dagli ultimi inserimenti nel foglio
-        job_select = st.selectbox("Suggerimento JOB (ultimi inseriti)", jobs_recenti, index=None)
-        job_custom = st.text_input("Oppure scrivi JOB")
+        # Opzioni unificate: lista dei JOB recenti + voce per nuovo inserimento
+        opzioni_disponibili = jobs_recenti + [OPZIONE_NUOVO_JOB] if jobs_recenti else [OPZIONE_NUOVO_JOB]
         
-        # Se viene scritto un testo manuale prende la precedenza, altrimenti usa la selezione dai suggerimenti
-        job = job_custom.strip() if job_custom.strip() else (job_select if job_select else "")
+        job_selezionato = st.selectbox(
+            "JOB", 
+            opzioni_disponibili, 
+            index=None, 
+            placeholder="Seleziona dai recenti o inserisci nuovo..."
+        )
+        
+        # Gestione input: se seleziona l'opzione speciale mostra il campo di testo
+        if job_selezionato == OPZIONE_NUOVO_JOB:
+            job = st.text_input("Inserisci codice JOB personalizzato").strip()
+        else:
+            job = job_selezionato if job_selezionato else ""
 
         alt_job = st.text_input("Alternative Job (Opzionale)")
         product = st.selectbox("PRODUCT (Opzionale)", LISTA_PRODUCT, index=None)
