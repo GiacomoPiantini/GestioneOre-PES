@@ -17,8 +17,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 NOME_FOGLIO_GOOGLE = "Registro_ore_PES"
-OPZIONE_NUOVO_JOB = "➕ Scrivi un nuovo JOB..."
 
+LISTA_JOB = ["0421088", "0804976", "8847761", "8847703", "8847704", "8847777", "8847801", "1655566", "8847683"]
 LISTA_DESCRIZIONI = [
     "Active participation in ITO/OTR Hand Off meetings (General Scope of supply) and CLDR issue",
     "ECR Management, BoM creation", "Check and comments on bom draft structures",
@@ -73,6 +73,7 @@ def carica_dati():
         df = df[COLONNE_DF]
         
     df['Data'] = df['Data'].astype(str)
+    df['JOB'] = df['JOB'].astype(str)
     df.insert(0, "Seleziona", False)
     return df
 
@@ -89,9 +90,12 @@ def salva_dati(df):
     df_to_save = df_base.astype(str)
         
     worksheet_1.clear()
-    worksheet_1.update([df_to_save.columns.values.tolist()] + df_to_save.values.tolist())
+    worksheet_1.update(
+        [df_to_save.columns.values.tolist()] + df_to_save.values.tolist(),
+        value_input_option="USER_ENTERED"
+    )
 
-    # --- 2. CALCOLO E RICOSTRUZIONE DA ZERO DEL REPORT ---
+    # --- 2. CALCOLO E AGGIORNAMENTO REPORT ---
     df_rep = df_base.copy()
     colonne_raggruppamento = ["Mese_Anno", "JOB", "Alternative Job", "Requestor", "PRODUCT", "Comp", "Description", "DOC", "REV"]
     
@@ -117,23 +121,22 @@ def salva_dati(df):
     colonne_report = [col for col in COLONNE_DF if col != "Data"]
     df_report = df_report[colonne_report].astype(str)
         
-    # Eliminazione del vecchio foglio "Report" se esiste
+    # Recupero o creazione del foglio Report
     try:
-        ws_report_old = sheet.worksheet("Report")
-        sheet.del_worksheet(ws_report_old)
+        worksheet_rep = sheet.worksheet("Report")
     except gspread.exceptions.WorksheetNotFound:
-        pass
+        worksheet_rep = sheet.add_worksheet(title="Report", rows="1000", cols="20")
         
-    # Ricreazione del foglio "Report" totalmente nuovo
-    righe_totali = max(len(df_report) + 10, 100)
-    colonne_totali = max(len(df_report.columns), 20)
-    worksheet_rep = sheet.add_worksheet(title="Report", rows=str(righe_totali), cols=str(colonne_totali))
-    
-    # Scrittura dei dati ricalcolati
-    worksheet_rep.update([df_report.columns.values.tolist()] + df_report.values.tolist())
+    worksheet_rep.clear()
+    worksheet_rep.update(
+        [df_report.columns.values.tolist()] + df_report.values.tolist(),
+        value_input_option="USER_ENTERED"
+    )
 
-    # Formattazione esplicita della colonna B (JOB nel Report) come TESTO NORMALE
-    worksheet_rep.format("B:B", {"numberFormat": {"type": "TEXT"}})
+    try:
+        worksheet_rep.format("B:B", {"numberFormat": {"type": "TEXT"}})
+    except Exception:
+        pass
 
 # --- INTERFACCIA UTENTE ---
 if 'dati' not in st.session_state:
@@ -147,12 +150,6 @@ df_oggi = st.session_state.dati[st.session_state.dati["Data"] == oggi_str]
 ore_gia_inserite = pd.to_numeric(df_oggi["HRS"], errors='coerce').fillna(0).sum()
 ore_rimaste = 8 - ore_gia_inserite
 
-# Estrazione dinamica degli ultimi JOB unici dal foglio
-jobs_recenti = list(dict.fromkeys(
-    str(x).strip() for x in reversed(st.session_state.dati["JOB"].dropna().tolist()) 
-    if str(x).strip() != ""
-))
-
 col_data, col_ore = st.columns([1, 1])
 with col_data:
     st.markdown(f"### Data: {oggi_str}")
@@ -162,24 +159,16 @@ with col_ore:
 with st.form(f"form_inserimento_{st.session_state.form_reset_key}", clear_on_submit=False):
     col1, col2 = st.columns(2)
     with col1:
-        # Opzioni unificate: lista dei JOB recenti + voce per nuovo inserimento
-        opzioni_disponibili = jobs_recenti + [OPZIONE_NUOVO_JOB] if jobs_recenti else [OPZIONE_NUOVO_JOB]
-        
-        job_selezionato = st.selectbox(
+        job = st.selectbox(
             "JOB", 
-            opzioni_disponibili, 
+            LISTA_JOB, 
             index=None, 
-            placeholder="Seleziona dai recenti o inserisci nuovo..."
+            placeholder="Seleziona un JOB..."
         )
-        
-        if job_selezionato == OPZIONE_NUOVO_JOB:
-            job = st.text_input("Inserisci codice JOB personalizzato").strip()
-        else:
-            job = job_selezionato if job_selezionato else ""
-
         alt_job = st.text_input("Alternative Job (Opzionale)")
         product = st.selectbox("PRODUCT (Opzionale)", LISTA_PRODUCT, index=None)
         comp = st.selectbox("Comp (Opzionale)", LISTA_COMP, index=None)
+        
     with col2:
         descrizione = st.selectbox("Description", LISTA_DESCRIZIONI, index=None)
         dettaglio = st.text_input("Detail (Opzionale)")
@@ -191,13 +180,13 @@ with st.form(f"form_inserimento_{st.session_state.form_reset_key}", clear_on_sub
         submit = st.form_submit_button("INSERISCI RIGA", use_container_width=True)
 
     if submit:
-        campi_mancanti = [c for c, v in zip(["Description", "HRS"], [descrizione, hrs]) if v is None]
+        campi_mancanti = [c for c, v in zip(["JOB", "Description", "HRS"], [job, descrizione, hrs]) if not v]
         if campi_mancanti:
             st.error(f"⚠️ Compila i campi obbligatori: **{', '.join(campi_mancanti)}**")
         else:
             nuova_riga = pd.DataFrame([{
                 "Seleziona": False, "Data": oggi_str, "Mese_Anno": get_mese_anno(oggi_str),
-                "JOB": job, "Alternative Job": alt_job, "Requestor": "", 
+                "JOB": str(job), "Alternative Job": alt_job, "Requestor": "", 
                 "PRODUCT": product if product else "", "Comp": comp if comp else "",
                 "Description": descrizione, "Detail": dettaglio, "DOC": "", "REV": "", "HRS": hrs
             }])
@@ -207,6 +196,7 @@ with st.form(f"form_inserimento_{st.session_state.form_reset_key}", clear_on_sub
             st.session_state.form_reset_key += 1
             st.rerun()
 
+# --- TABELLA MODIFICA ORE ODIERNE ---
 df_passato = st.session_state.dati[st.session_state.dati["Data"] != oggi_str].reset_index(drop=True)
 df_oggi_edit = st.session_state.dati[st.session_state.dati["Data"] == oggi_str].reset_index(drop=True)
 
