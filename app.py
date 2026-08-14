@@ -11,6 +11,7 @@ st.markdown("""
     header {visibility: hidden;}
     footer {visibility: hidden;}
     .block-container { padding: 1rem 3rem !important; }
+    div[data-testid="stForm"] { padding: 1rem 1.5rem !important; }
     .st-emotion-cache-16idsys p { margin-bottom: 0px; }
 </style>
 """, unsafe_allow_html=True)
@@ -72,7 +73,6 @@ def carica_dati():
         df = df[COLONNE_DF]
         
     df['Data'] = df['Data'].astype(str)
-    df['JOB'] = df['JOB'].astype(str)
     df.insert(0, "Seleziona", False)
     return df
 
@@ -89,18 +89,9 @@ def salva_dati(df):
     df_to_save = df_base.astype(str)
         
     worksheet_1.clear()
-    worksheet_1.update(
-        [df_to_save.columns.values.tolist()] + df_to_save.values.tolist(),
-        value_input_option="USER_ENTERED"
-    )
+    worksheet_1.update([df_to_save.columns.values.tolist()] + df_to_save.values.tolist())
 
-    # Formattazione colonna C (JOB in Foglio1)
-    try:
-        worksheet_1.format("C:C", {"numberFormat": {"type": "TEXT"}})
-    except Exception:
-        pass
-
-    # --- 2. CALCOLO E AGGIORNAMENTO REPORT ---
+    # --- 2. CALCOLO E RICOSTRUZIONE DA ZERO DEL REPORT ---
     df_rep = df_base.copy()
     colonne_raggruppamento = ["Mese_Anno", "JOB", "Alternative Job", "Requestor", "PRODUCT", "Comp", "Description", "DOC", "REV"]
     
@@ -126,23 +117,23 @@ def salva_dati(df):
     colonne_report = [col for col in COLONNE_DF if col != "Data"]
     df_report = df_report[colonne_report].astype(str)
         
-    # Recupera o crea il foglio Report
+    # Eliminazione del vecchio foglio "Report" se esiste
     try:
-        worksheet_rep = sheet.worksheet("Report")
+        ws_report_old = sheet.worksheet("Report")
+        sheet.del_worksheet(ws_report_old)
     except gspread.exceptions.WorksheetNotFound:
-        worksheet_rep = sheet.add_worksheet(title="Report", rows="1000", cols="20")
-        
-    worksheet_rep.clear()
-    worksheet_rep.update(
-        [df_report.columns.values.tolist()] + df_report.values.tolist(),
-        value_input_option="USER_ENTERED"
-    )
-
-    # Formattazione colonna B (JOB nel Report)
-    try:
-        worksheet_rep.format("B:B", {"numberFormat": {"type": "TEXT"}})
-    except Exception:
         pass
+        
+    # Ricreazione del foglio "Report" totalmente nuovo
+    righe_totali = max(len(df_report) + 10, 100)
+    colonne_totali = max(len(df_report.columns), 20)
+    worksheet_rep = sheet.add_worksheet(title="Report", rows=str(righe_totali), cols=str(colonne_totali))
+    
+    # Scrittura dei dati ricalcolati
+    worksheet_rep.update([df_report.columns.values.tolist()] + df_report.values.tolist())
+
+    # Formattazione esplicita della colonna B (JOB nel Report) come TESTO NORMALE
+    worksheet_rep.format("B:B", {"numberFormat": {"type": "TEXT"}})
 
 # --- INTERFACCIA UTENTE ---
 if 'dati' not in st.session_state:
@@ -161,7 +152,6 @@ jobs_recenti = list(dict.fromkeys(
     str(x).strip() for x in reversed(st.session_state.dati["JOB"].dropna().tolist()) 
     if str(x).strip() != ""
 ))
-opzioni_disponibili = jobs_recenti + [OPZIONE_NUOVO_JOB] if jobs_recenti else [OPZIONE_NUOVO_JOB]
 
 col_data, col_ore = st.columns([1, 1])
 with col_data:
@@ -169,36 +159,36 @@ with col_data:
 with col_ore:
     st.markdown(f"<div style='text-align: right; margin-top: 10px; font-size: 18px;'><b>Ore registrate oggi: {int(ore_gia_inserite)} / 8</b></div>", unsafe_allow_html=True)
 
-# --- CARD UNICA PER L'INSERIMENTO ---
-with st.container(border=True):
+with st.form(f"form_inserimento_{st.session_state.form_reset_key}", clear_on_submit=False):
     col1, col2 = st.columns(2)
-    
     with col1:
+        # Opzioni unificate: lista dei JOB recenti + voce per nuovo inserimento
+        opzioni_disponibili = jobs_recenti + [OPZIONE_NUOVO_JOB] if jobs_recenti else [OPZIONE_NUOVO_JOB]
+        
         job_selezionato = st.selectbox(
             "JOB", 
             opzioni_disponibili, 
             index=None, 
-            placeholder="Seleziona dai recenti o inserisci nuovo...",
-            key=f"select_job_{st.session_state.form_reset_key}"
+            placeholder="Seleziona dai recenti o inserisci nuovo..."
         )
-        if job_selezionato == OPZIONE_NUOVO_JOB:
-            job_finale = st.text_input("Inserisci codice JOB personalizzato", key=f"text_job_{st.session_state.form_reset_key}").strip()
-        else:
-            job_finale = job_selezionato if job_selezionato else ""
-
-        alt_job = st.text_input("Alternative Job (Opzionale)", key=f"alt_job_{st.session_state.form_reset_key}")
-        product = st.selectbox("PRODUCT (Opzionale)", LISTA_PRODUCT, index=None, key=f"product_{st.session_state.form_reset_key}")
-        comp = st.selectbox("Comp (Opzionale)", LISTA_COMP, index=None, key=f"comp_{st.session_state.form_reset_key}")
         
+        if job_selezionato == OPZIONE_NUOVO_JOB:
+            job = st.text_input("Inserisci codice JOB personalizzato").strip()
+        else:
+            job = job_selezionato if job_selezionato else ""
+
+        alt_job = st.text_input("Alternative Job (Opzionale)")
+        product = st.selectbox("PRODUCT (Opzionale)", LISTA_PRODUCT, index=None)
+        comp = st.selectbox("Comp (Opzionale)", LISTA_COMP, index=None)
     with col2:
-        descrizione = st.selectbox("Description", LISTA_DESCRIZIONI, index=None, key=f"desc_{st.session_state.form_reset_key}")
-        dettaglio = st.text_input("Detail (Opzionale)", key=f"detail_{st.session_state.form_reset_key}")
+        descrizione = st.selectbox("Description", LISTA_DESCRIZIONI, index=None)
+        dettaglio = st.text_input("Detail (Opzionale)")
         opzioni_ore = list(range(1, int(ore_rimaste) + 1)) if ore_rimaste > 0 else []
-        hrs = st.selectbox("HRS", opzioni_ore, index=None, key=f"hrs_{st.session_state.form_reset_key}")
+        hrs = st.selectbox("HRS", opzioni_ore, index=None)
 
     col_vuota, col_bottone = st.columns([5, 1])
     with col_bottone:
-        submit = st.button("INSERISCI RIGA", use_container_width=True, key=f"btn_submit_{st.session_state.form_reset_key}")
+        submit = st.form_submit_button("INSERISCI RIGA", use_container_width=True)
 
     if submit:
         campi_mancanti = [c for c, v in zip(["Description", "HRS"], [descrizione, hrs]) if v is None]
@@ -207,7 +197,7 @@ with st.container(border=True):
         else:
             nuova_riga = pd.DataFrame([{
                 "Seleziona": False, "Data": oggi_str, "Mese_Anno": get_mese_anno(oggi_str),
-                "JOB": str(job_finale), "Alternative Job": alt_job, "Requestor": "", 
+                "JOB": job, "Alternative Job": alt_job, "Requestor": "", 
                 "PRODUCT": product if product else "", "Comp": comp if comp else "",
                 "Description": descrizione, "Detail": dettaglio, "DOC": "", "REV": "", "HRS": hrs
             }])
@@ -217,7 +207,6 @@ with st.container(border=True):
             st.session_state.form_reset_key += 1
             st.rerun()
 
-# --- TABELLA DI MODIFICA ORE ODIERNE ---
 df_passato = st.session_state.dati[st.session_state.dati["Data"] != oggi_str].reset_index(drop=True)
 df_oggi_edit = st.session_state.dati[st.session_state.dati["Data"] == oggi_str].reset_index(drop=True)
 
