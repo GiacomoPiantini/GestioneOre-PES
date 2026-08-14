@@ -18,7 +18,6 @@ st.markdown("""
 
 NOME_FOGLIO_GOOGLE = "Registro_ore_PES"
 
-LISTA_JOB = ["421088", "0804976", "8847761", "8847703", "8847704", "8847777", "8847801", "1655566", "8847683"]
 LISTA_DESCRIZIONI = [
     "Active participation in ITO/OTR Hand Off meetings (General Scope of supply) and CLDR issue",
     "ECR Management, BoM creation", "Check and comments on bom draft structures",
@@ -164,6 +163,12 @@ df_oggi = st.session_state.dati[st.session_state.dati["Data"] == oggi_str]
 ore_gia_inserite = pd.to_numeric(df_oggi["HRS"], errors='coerce').fillna(0).sum()
 ore_rimaste = 8 - ore_gia_inserite
 
+# Estrazione dinamica degli ultimi JOB unici inseriti nel foglio (dal più recente al meno recente)
+jobs_recenti = list(dict.fromkeys(
+    str(x).strip() for x in reversed(st.session_state.dati["JOB"].dropna().tolist()) 
+    if str(x).strip() != ""
+))
+
 col_data, col_ore = st.columns([1, 1])
 with col_data:
     st.markdown(f"### Data: {oggi_str}")
@@ -173,7 +178,13 @@ with col_ore:
 with st.form(f"form_inserimento_{st.session_state.form_reset_key}", clear_on_submit=False):
     col1, col2 = st.columns(2)
     with col1:
-        job = st.selectbox("JOB (Opzionale)", LISTA_JOB, index=None)
+        # Suggerimenti dagli ultimi inserimenti nel foglio
+        job_select = st.selectbox("Suggerimento JOB (ultimi inseriti)", jobs_recenti, index=None)
+        job_custom = st.text_input("Oppure scrivi JOB")
+        
+        # Se viene scritto un testo manuale prende la precedenza, altrimenti usa la selezione dai suggerimenti
+        job = job_custom.strip() if job_custom.strip() else (job_select if job_select else "")
+
         alt_job = st.text_input("Alternative Job (Opzionale)")
         product = st.selectbox("PRODUCT (Opzionale)", LISTA_PRODUCT, index=None)
         comp = st.selectbox("Comp (Opzionale)", LISTA_COMP, index=None)
@@ -194,7 +205,7 @@ with st.form(f"form_inserimento_{st.session_state.form_reset_key}", clear_on_sub
         else:
             nuova_riga = pd.DataFrame([{
                 "Seleziona": False, "Data": oggi_str, "Mese_Anno": get_mese_anno(oggi_str),
-                "JOB": job if job else "", "Alternative Job": alt_job, "Requestor": "", 
+                "JOB": job, "Alternative Job": alt_job, "Requestor": "", 
                 "PRODUCT": product if product else "", "Comp": comp if comp else "",
                 "Description": descrizione, "Detail": dettaglio, "DOC": "", "REV": "", "HRS": hrs
             }])
