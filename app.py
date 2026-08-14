@@ -71,14 +71,6 @@ def carica_dati():
             if col not in df.columns:
                 df[col] = ""
         df = df[COLONNE_DF]
-    
-    def rimuovi_apostrofi(val):
-        if isinstance(val, str) and val.startswith("'0") and val[1:].isdigit():
-            return val[1:]
-        return val
-        
-    for col in df.columns:
-        df[col] = df[col].apply(rimuovi_apostrofi)
         
     df['Data'] = df['Data'].astype(str)
     df.insert(0, "Seleziona", False)
@@ -93,17 +85,8 @@ def salva_dati(df):
     if worksheet_1.title != "Foglio1":
         worksheet_1.update_title("Foglio1")
         
-    df_base = df.drop(columns=["Seleziona"], errors='ignore')
-    
-    def proteggi_zeri(val):
-        val_str = str(val) if pd.notna(val) else ""
-        if val_str.startswith("0") and val_str.isdigit() and len(val_str) > 1:
-            return f"'{val_str}"
-        return val_str
-        
-    df_to_save = df_base.copy()
-    for col in df_to_save.columns:
-        df_to_save[col] = df_to_save[col].apply(proteggi_zeri)
+    df_base = df.drop(columns=["Seleziona"], errors='ignore').fillna("")
+    df_to_save = df_base.astype(str)
         
     worksheet_1.clear()
     worksheet_1.update([df_to_save.columns.values.tolist()] + df_to_save.values.tolist())
@@ -112,14 +95,8 @@ def salva_dati(df):
     df_rep = df_base.copy()
     colonne_raggruppamento = ["Mese_Anno", "JOB", "Alternative Job", "Requestor", "PRODUCT", "Comp", "Description", "DOC", "REV"]
     
-    def pulisci_per_raggruppamento(val):
-        if pd.isna(val): return ""
-        s = str(val).strip()
-        if s.startswith("'"): return s[1:]
-        return s
-        
     for col in colonne_raggruppamento:
-        df_rep[col] = df_rep[col].apply(pulisci_per_raggruppamento)
+        df_rep[col] = df_rep[col].astype(str).str.strip()
         
     df_rep["HRS"] = pd.to_numeric(df_rep["HRS"], errors='coerce').fillna(0)
     
@@ -138,10 +115,7 @@ def salva_dati(df):
     })
     
     colonne_report = [col for col in COLONNE_DF if col != "Data"]
-    df_report = df_report[colonne_report]
-    
-    for col in df_report.columns:
-        df_report[col] = df_report[col].apply(proteggi_zeri)
+    df_report = df_report[colonne_report].astype(str)
         
     # Crea o aggiorna il foglio Report
     try:
