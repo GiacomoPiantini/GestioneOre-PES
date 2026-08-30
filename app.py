@@ -62,7 +62,6 @@ def carica_dati():
     sheet = client.open(NOME_FOGLIO_GOOGLE)
     worksheet = sheet.get_worksheet(0)
     
-    # numericise_ignore=['all'] forza la lettura di tutti i valori come stringhe trasparenti
     try:
         dati = worksheet.get_all_records(head=1, numericise_ignore=['all'])
     except Exception:
@@ -82,39 +81,12 @@ def carica_dati():
     df.insert(0, "Seleziona", False)
     return df
 
-def salva_dati(df):
+def rigenera_report(df):
+    """Calcola i dati aggregati ed effettua il reset/sovrascrittura del foglio 'Report'"""
     client = connetti_gsheets()
     sheet = client.open(NOME_FOGLIO_GOOGLE)
     
-    # --- 1. SALVATAGGIO FOGLIO 1 ---
-    worksheet_1 = sheet.get_worksheet(0)
-    if worksheet_1.title != "Foglio1":
-        worksheet_1.update_title("Foglio1")
-        
     df_base = df.drop(columns=["Seleziona"], errors='ignore').fillna("")
-    
-    # Prepariamo la struttura preservando i tipi (JOB come stringa, HRS come numero)
-    df_to_save = df_base.copy()
-    for col in df_to_save.columns:
-        if col == "HRS":
-            df_to_save[col] = pd.to_numeric(df_to_save[col], errors='coerce').fillna(0)
-        else:
-            df_to_save[col] = df_to_save[col].astype(str)
-        
-    worksheet_1.clear()
-
-    # value_input_option="RAW" impedisce la conversione automatica di "0421088" in numero
-    worksheet_1.update(
-        [df_to_save.columns.values.tolist()] + df_to_save.values.tolist(),
-        value_input_option="RAW"
-    )
-
-    try:
-        worksheet_1.format("C:C", {"numberFormat": {"type": "TEXT"}})
-    except Exception:
-        pass
-
-    # --- 2. CALCOLO E AGGIORNAMENTO REPORT ---
     df_rep = df_base.copy()
     colonne_raggruppamento = ["Mese_Anno", "JOB", "Alternative Job", "Requestor", "PRODUCT", "Comp", "Description", "DOC", "REV"]
     
@@ -161,6 +133,37 @@ def salva_dati(df):
     except Exception:
         pass
 
+def salva_dati(df):
+    client = connetti_gsheets()
+    sheet = client.open(NOME_FOGLIO_GOOGLE)
+    
+    # 1. SALVATAGGIO FOGLIO 1
+    worksheet_1 = sheet.get_worksheet(0)
+    if worksheet_1.title != "Foglio1":
+        worksheet_1.update_title("Foglio1")
+        
+    df_base = df.drop(columns=["Seleziona"], errors='ignore').fillna("")
+    df_to_save = df_base.copy()
+    for col in df_to_save.columns:
+        if col == "HRS":
+            df_to_save[col] = pd.to_numeric(df_to_save[col], errors='coerce').fillna(0)
+        else:
+            df_to_save[col] = df_to_save[col].astype(str)
+        
+    worksheet_1.clear()
+    worksheet_1.update(
+        [df_to_save.columns.values.tolist()] + df_to_save.values.tolist(),
+        value_input_option="RAW"
+    )
+
+    try:
+        worksheet_1.format("C:C", {"numberFormat": {"type": "TEXT"}})
+    except Exception:
+        pass
+
+    # 2. RIGENERA IL REPORT
+    rigenera_report(df)
+
 # --- INTERFACCIA UTENTE ---
 if 'dati' not in st.session_state:
     st.session_state.dati = carica_dati()
@@ -173,21 +176,22 @@ df_oggi = st.session_state.dati[st.session_state.dati["Data"] == oggi_str]
 ore_gia_inserite = pd.to_numeric(df_oggi["HRS"], errors='coerce').fillna(0).sum()
 ore_rimaste = 8 - ore_gia_inserite
 
-col_data, col_ore = st.columns([1, 1])
+# Barra superiore con il pulsante per resettare il foglio Report
+col_data, col_btn_reset, col_ore = st.columns([2, 2, 2])
 with col_data:
     st.markdown(f"### Data: {oggi_str}")
+with col_btn_reset:
+    if st.button("🔄 Resetta/Aggiorna Foglio Report", use_container_width=True):
+        with st.spinner("Aggiornamento del Report in corso..."):
+            rigenera_report(st.session_state.dati)
+        st.success("Foglio Report aggiornato con successo!")
 with col_ore:
     st.markdown(f"<div style='text-align: right; margin-top: 10px; font-size: 18px;'><b>Ore registrate oggi: {int(ore_gia_inserite)} / 8</b></div>", unsafe_allow_html=True)
 
 with st.form(f"form_inserimento_{st.session_state.form_reset_key}", clear_on_submit=False):
     col1, col2 = st.columns(2)
     with col1:
-        job = st.selectbox(
-            "JOB", 
-            LISTA_JOB, 
-            index=None, 
-            placeholder="Seleziona un JOB..."
-        )
+        job = st.selectbox("JOB", LISTA_JOB, index=None, placeholder="Seleziona un JOB...")
         alt_job = st.text_input("Alternative Job (Opzionale)")
         product = st.selectbox("PRODUCT (Opzionale)", LISTA_PRODUCT, index=None)
         comp = st.selectbox("Comp (Opzionale)", LISTA_COMP, index=None)
