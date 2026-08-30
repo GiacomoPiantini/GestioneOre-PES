@@ -81,57 +81,89 @@ def carica_dati():
     df.insert(0, "Seleziona", False)
     return df
 
-def rigenera_report(df):
-    """Calcola i dati aggregati ed effettua il reset/sovrascrittura del foglio 'Report'"""
-    client = connetti_gsheets()
-    sheet = client.open(NOME_FOGLIO_GOOGLE)
-    
-    df_base = df.drop(columns=["Seleziona"], errors='ignore').fillna("")
-    df_rep = df_base.copy()
-    colonne_raggruppamento = ["Mese_Anno", "JOB", "Alternative Job", "Requestor", "PRODUCT", "Comp", "Description", "DOC", "REV"]
-    
-    for col in colonne_raggruppamento:
-        df_rep[col] = df_rep[col].astype(str).str.strip()
-        
-    df_rep["HRS"] = pd.to_numeric(df_rep["HRS"], errors='coerce').fillna(0)
-    
-    def unisci_dettagli(x):
-        dettagli_validi = []
-        for i in x:
-            if pd.notna(i):
-                val = str(i).strip()
-                if val != "" and val not in dettagli_validi:
-                    dettagli_validi.append(val)
-        return " | ".join(dettagli_validi) if dettagli_validi else ""
-
-    df_report = df_rep.groupby(colonne_raggruppamento, as_index=False).agg({
-        "Detail": unisci_dettagli,
-        "HRS": "sum"
-    })
-    
-    colonne_report = [col for col in COLONNE_DF if col != "Data"]
-    df_report = df_report[colonne_report]
-    
-    for col in df_report.columns:
-        if col != "HRS":
-            df_report[col] = df_report[col].astype(str)
-        
+def rigenera_report():
+    """Rilegge i dati dal Foglio1, calcola l'aggregato e aggiorna il foglio Report."""
     try:
-        worksheet_rep = sheet.worksheet("Report")
-    except gspread.exceptions.WorksheetNotFound:
-        worksheet_rep = sheet.add_worksheet(title="Report", rows="1000", cols="20")
+        client = connetti_gsheets()
+        sheet = client.open(NOME_FOGLIO_GOOGLE)
+        worksheet_1 = sheet.get_worksheet(0)
         
-    worksheet_rep.clear()
+        # 1. Caricamento dati reali da Foglio1
+        try:
+            dati = worksheet_1.get_all_records(head=1, numericise_ignore=['all'])
+        except Exception:
+            dati = worksheet_1.get_all_records(head=1)
+            
+        if not dati:
+            df_base = pd.DataFrame(columns=COLONNE_DF)
+        else:
+            df_base = pd.DataFrame(dati)
+            for col in COLONNE_DF:
+                if col not in df_base.columns:
+                    df_base[col] = ""
+            df_base = df_base[COLONNE_DF]
 
-    worksheet_rep.update(
-        [df_report.columns.values.tolist()] + df_report.values.tolist(),
-        value_input_option="RAW"
-    )
+        # Aggiorna lo stato session_state di Streamlit
+        df_memoria = df_base.copy()
+        df_memoria['Data'] = df_memoria['Data'].astype(str)
+        df_memoria['JOB'] = df_memoria['JOB'].astype(str).str.strip()
+        df_memoria.insert(0, "Seleziona", False)
+        st.session_state.dati = df_memoria
 
-    try:
-        worksheet_rep.format("B:B", {"numberFormat": {"type": "TEXT"}})
-    except Exception:
-        pass
+        # 2. Calcolo dati aggregati
+        df_rep = df_base.copy()
+        colonne_raggruppamento = ["Mese_Anno", "JOB", "Alternative Job", "Requestor", "PRODUCT", "Comp", "Description", "DOC", "REV"]
+        
+        for col in colonne_raggruppamento:
+            df_rep[col] = df_rep[col].fillna("").astype(str).str.strip()
+            
+        df_rep["HRS"] = pd.to_numeric(df_rep["HRS"], errors='coerce').fillna(0)
+        
+        def unisci_dettagli(x):
+            dettagli_validi = []
+            for i in x:
+                if pd.notna(i):
+                    val = str(i).strip()
+                    if val != "" and val not in dettagli_validi:
+                        dettagli_validi.append(val)
+            return " | ".join(dettagli_validi) if dettagli_validi else ""
+
+        colonne_report = [col for col in COLONNE_DF if col != "Data"]
+        
+        if not df_rep.empty:
+            df_report = df_rep.groupby(colonne_raggruppamento, as_index=False, dropna=False).agg({
+                "Detail": unisci_dettagli,
+                "HRS": "sum"
+            })
+            df_report = df_report[colonne_report]
+        else:
+            df_report = pd.DataFrame(columns=colonne_report)
+
+        for col in df_report.columns:
+            if col != "HRS":
+                df_report[col] = df_report[col].fillna("").astype(str)
+            else:
+                df_report[col] = pd.to_numeric(df_report[col], errors='coerce').fillna(0)
+            
+        try:
+            worksheet_rep = sheet.worksheet("Report")
+        except gspread.exceptions.WorksheetNotFound:
+            worksheet_rep = sheet.add_worksheet(title="Report", rows="1000", cols="20")
+            
+        worksheet_rep.clear()
+
+        # Preparazione dati e inserimento partendo da "A1"
+        valori = [df_report.columns.values.tolist()] + df_report.values.tolist()
+        worksheet_rep.update("A1", valori, value_input_option="RAW")
+
+        try:
+            worksheet_rep.format("B:B", {"numberFormat": {"type": "TEXT"}})
+        except Exception:
+            pass
+
+        return True, "Report aggiornato con successo!"
+    except Exception as e:
+        return False, f"Errore durante l'aggiornamento: {str(e)}"
 
 def salva_dati(df):
     client = connetti_gsheets()
@@ -151,10 +183,8 @@ def salva_dati(df):
             df_to_save[col] = df_to_save[col].astype(str)
         
     worksheet_1.clear()
-    worksheet_1.update(
-        [df_to_save.columns.values.tolist()] + df_to_save.values.tolist(),
-        value_input_option="RAW"
-    )
+    valori_foglio1 = [df_to_save.columns.values.tolist()] + df_to_save.values.tolist()
+    worksheet_1.update("A1", valori_foglio1, value_input_option="RAW")
 
     try:
         worksheet_1.format("C:C", {"numberFormat": {"type": "TEXT"}})
@@ -162,7 +192,7 @@ def salva_dati(df):
         pass
 
     # 2. RIGENERA IL REPORT
-    rigenera_report(df)
+    rigenera_report()
 
 # --- INTERFACCIA UTENTE ---
 if 'dati' not in st.session_state:
@@ -176,15 +206,19 @@ df_oggi = st.session_state.dati[st.session_state.dati["Data"] == oggi_str]
 ore_gia_inserite = pd.to_numeric(df_oggi["HRS"], errors='coerce').fillna(0).sum()
 ore_rimaste = 8 - ore_gia_inserite
 
-# Barra superiore con il pulsante per resettare il foglio Report
 col_data, col_btn_reset, col_ore = st.columns([2, 2, 2])
 with col_data:
     st.markdown(f"### Data: {oggi_str}")
 with col_btn_reset:
     if st.button("🔄 Resetta/Aggiorna Foglio Report", use_container_width=True):
         with st.spinner("Aggiornamento del Report in corso..."):
-            rigenera_report(st.session_state.dati)
-        st.success("Foglio Report aggiornato con successo!")
+            esito, messaggio = rigenera_report()
+        if esito:
+            st.success(messaggio)
+            st.rerun()
+        else:
+            st.error(messaggio)
+
 with col_ore:
     st.markdown(f"<div style='text-align: right; margin-top: 10px; font-size: 18px;'><b>Ore registrate oggi: {int(ore_gia_inserite)} / 8</b></div>", unsafe_allow_html=True)
 
